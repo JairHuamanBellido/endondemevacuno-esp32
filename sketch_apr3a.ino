@@ -5,11 +5,13 @@
 #include "WiFi.h"
 #include "time.h"
 
-#define AWS_IOT_PUBLISH_TOPIC "esp32/pub"
+#define AWS_IOT_PUBLISH_TOPIC "esp32/lambda"
 #define AWS_IOT_SUBSCRIBE_TOPIC "esp32/sub"
 //define sound speed in cm/uS
 #define SOUND_SPEED 0.034
 #define CM_TO_INCH 0.393701
+#define VACCINE_CENTER_ID "834d8d53-45cf-419f-aa32-a66286eb2ef4"
+#define IS_OUTPUT true
 // 5 minuts
 #define SENDING_INTERVAL_M 1
 #define iterations 5 //Number of readings in the calibration stage
@@ -75,16 +77,16 @@ void connectAWS() {
 void publishMessage() {
   Serial.println(lastShipping);
   StaticJsonDocument<200> doc;
-  doc["hello"] = "hola";
+  doc["vaccine_center_id"] = VACCINE_CENTER_ID;
+  const int toCalibrate = (IS_OUTPUT)? -1 : 1;
+  doc["data"] = people * toCalibrate;
 
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer);  // print to client
 
-
-  //client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
+  client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
   Serial.println("Mensaje enviado!");
   people=0;
-  //lastShipping = millis();
 }
 
 void messageHandler(String &topic, String &payload) {
