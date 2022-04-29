@@ -11,17 +11,23 @@
 #define SOUND_SPEED 0.034
 #define CM_TO_INCH 0.393701
 // 5 minuts
-#define SENDING_INTERVAL_M 5
+#define SENDING_INTERVAL_M 1
+#define iterations 5 //Number of readings in the calibration stage
 
 const int trigPin = 23;
-const int echoPin = 20;
+const int echoPin = 22;
 const int ledPin = 25;
 
 int lastShipping = -1;
+int people = 0;
+bool prev_inblocked = false;
 
 const char *NTPServer = "pool.ntp.org";
 const long GMTOffset_sec = -18000;   //Replace with your GMT offset (seconds)
 const int DayLightOffset_sec = 0;  //Replace with your daylight offset (seconds)
+
+float calibrate_out;
+float max_distance;
 
 WiFiClientSecure net = WiFiClientSecure();
 MQTTClient client = MQTTClient(256);
@@ -67,6 +73,7 @@ void connectAWS() {
 }
 
 void publishMessage() {
+  Serial.println(lastShipping);
   StaticJsonDocument<200> doc;
   doc["hello"] = "hola";
 
@@ -74,8 +81,9 @@ void publishMessage() {
   serializeJson(doc, jsonBuffer);  // print to client
 
 
-  client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
+  //client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
   Serial.println("Mensaje enviado!");
+  people=0;
   //lastShipping = millis();
 }
 
@@ -99,12 +107,27 @@ bool isTimeToSend() {
     Serial.println("Failed to obtain time");
     return false;
   }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   if((timeinfo.tm_min)%SENDING_INTERVAL_M==0 && lastShipping!=timeinfo.tm_min) {
     lastShipping=timeinfo.tm_min;
     return true;
   }
   return false;
+}
+
+void caliper(){
+  Serial.println("Calibrating...");
+  delay(1500);
+  for (int a = 0; a < iterations; a++) {
+    getObjectDistance();
+    calibrate_out += distanceCm;
+    delay(200);
+  }
+  max_distance = 1.25 * calibrate_out / iterations;
+  calibrate_out = 0.75 * calibrate_out / iterations;
+  Serial.print("max_distance:");
+  Serial.println(max_distance);
+  Serial.print("calibrate_out:");
+  Serial.println(calibrate_out);
 }
 
 void setup() {
@@ -115,13 +138,11 @@ void setup() {
   connectAWS();
   configTime(GMTOffset_sec, DayLightOffset_sec, NTPServer);
   isTimeToSend();
+  caliper();
 }
 
-void loop() {
-  //sendData
-  if (isTimeToSend())
-    publishMessage();
-  // Clears the trigPin
+void getObjectDistance(){
+   // Clears the trigPin
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   // Sets the trigPin on HIGH state for 10 micro seconds
@@ -131,23 +152,43 @@ void loop() {
 
   // Reads the echoPin, returns the sound wave travel time in microseconds
   duration = pulseIn(echoPin, HIGH);
-
   // Calculate the distance
   distanceCm = duration * SOUND_SPEED / 2;
-
   // Convert to inches
   distanceInch = distanceCm * CM_TO_INCH;
+}
 
+void showDistanceValues(){
   // Prints the distance in the Serial Monitor
   Serial.print("Distance (cm): ");
   Serial.println(distanceCm);
   Serial.print("Distance (inch): ");
   Serial.println(distanceInch);
-  if (distanceCm < 50) {
+}
+
+void loop() {
+  if (isTimeToSend())
+    publishMessage();
+
+  getObjectDistance();
+  //showDistanceValues();
+
+  if (distanceCm < calibrate_out ) {
     digitalWrite(ledPin, HIGH);
+    showDistanceValues();
+    if(!prev_inblocked){
+      prev_inblocked = true;
+      people++;
+      Serial.print("People: ");
+      Serial.println(people);
+    }
   } else {
+    if(max_distance < distanceCm){
+      showDistanceValues();
+    }
+    prev_inblocked = false;
     digitalWrite(ledPin, LOW);
   }
   client.loop();
-  delay(500);
+  delay(200);
 }
