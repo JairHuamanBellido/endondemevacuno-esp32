@@ -1,4 +1,5 @@
 #include "secrets.h"
+#include <NewPing.h>
 #include <WiFiClientSecure.h>
 #include <MQTTClient.h>
 #include <ArduinoJson.h>
@@ -23,6 +24,8 @@ const int ledPin = 25;
 int lastShipping = -1;
 int people = 0;
 bool prev_inblocked = false;
+bool sum = false;
+
 
 const char *NTPServer = "pool.ntp.org";
 const long GMTOffset_sec = -18000;   //Replace with your GMT offset (seconds)
@@ -75,6 +78,7 @@ void connectAWS() {
 }
 
 void publishMessage() {
+  Serial.print("Minuto: ");
   Serial.println(lastShipping);
   StaticJsonDocument<200> doc;
   doc["vaccine_center_id"] = VACCINE_CENTER_ID;
@@ -84,7 +88,7 @@ void publishMessage() {
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer);  // print to client
 
-  client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
+  //client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
   Serial.println("Mensaje enviado!");
   people=0;
 }
@@ -156,16 +160,12 @@ void getObjectDistance(){
   duration = pulseIn(echoPin, HIGH);
   // Calculate the distance
   distanceCm = duration * SOUND_SPEED / 2;
-  // Convert to inches
-  distanceInch = distanceCm * CM_TO_INCH;
 }
 
 void showDistanceValues(){
   // Prints the distance in the Serial Monitor
   Serial.print("Distance (cm): ");
   Serial.println(distanceCm);
-  Serial.print("Distance (inch): ");
-  Serial.println(distanceInch);
 }
 
 void loop() {
@@ -177,20 +177,40 @@ void loop() {
 
   if (distanceCm < calibrate_out ) {
     digitalWrite(ledPin, HIGH);
-    showDistanceValues();
-    if(!prev_inblocked){
+    delay(50);
+    getObjectDistance();
+    if(distanceCm < calibrate_out){
+        showDistanceValues();
+        people++;
+        Serial.print("People: ");
+        Serial.println(people); 
+        delay(150);
+    }
+    //showDistanceValues();
+    /*if(!prev_inblocked){
+      Serial.println("Algun objeto?");
       prev_inblocked = true;
-      people++;
-      Serial.print("People: ");
-      Serial.println(people);
     }
+    else{
+      if(!sum){
+        people++;
+        sum=true;
+        Serial.print("People: ");
+        Serial.println(people); 
+      }
+    }*/
   } else {
-    if(max_distance < distanceCm){
-      showDistanceValues();
+    /*if(prev_inblocked){
+      Serial.println("Ya paso");
+      //showDistanceValues();
     }
+    if(max_distance < distanceCm){
+      //showDistanceValues();
+    }
+    sum=false;
     prev_inblocked = false;
-    digitalWrite(ledPin, LOW);
+    digitalWrite(ledPin, LOW);*/
   }
   client.loop();
-  delay(200);
+  delay(175);
 }
